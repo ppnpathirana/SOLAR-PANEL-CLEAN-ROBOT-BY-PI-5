@@ -1,4 +1,4 @@
-# 🤖 CleanBot v1.0 — Industrial Solar Panel Cleaning Robot
+#  CleanBot v1.0 — Industrial Solar Panel Cleaning Robot
 
 > An autonomous, AI-powered solar panel cleaning robot engineered for industrial applications. Built on the Raspberry Pi 5, CleanBot features zero-delay hardware safety systems, real-time computer vision, and a professional web-based command center.
 
