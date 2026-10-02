@@ -418,7 +418,10 @@ html{scroll-behavior:smooth;scroll-padding-top:160px}html,body{font-size:14px;li
 <div class="card" id="session-history">
   <div class="hist-hdr">
     <div class="ctitle" style="padding:0;border:none"><div class="cdot"></div>CLEANING HISTORY</div>
-    <button class="dl-btn" onclick="window.location='/history/csv'">⬇️ CSV</button>
+    <div style="display:flex; gap:8px">
+      <button class="dl-btn" onclick="window.location='/history/pdf'" style="border-color:var(--orange);color:var(--orange)">📄 PDF</button>
+      <button class="dl-btn" onclick="window.location='/history/csv'">⬇️ CSV</button>
+    </div>
   </div>
   <div style="overflow-x:auto">
     <table class="hist-table">

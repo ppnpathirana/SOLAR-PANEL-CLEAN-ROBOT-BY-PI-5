@@ -33,6 +33,9 @@
 
 ## 📸 Core Capabilities
 
+- **Automated Damage Snapshotting** — Saves high-resolution images of solar panel damage to a local 'reports/' directory when anomalies are detected by YOLOv8.
+- **Professional PDF Reporting** — Export cleaning session history, duration, area covered, and damage counts into a formatted PDF directly from the dashboard.
+- **Industrial Logging** — Robust Python logging module implementation replacing standard console prints, ensuring logs are captured reliably by systemd.
 - **Real-Time AI Vision** — Utilizes YOLOv8 for dirt and damage detection, overlaid with a multi-layered edge detection system (Canny, HSV, Sobel, and Contour).
 - **Zero-Latency Motor Control** — Achieves a 200Hz movement execution loop using BTS7960 motor drivers for responsive and fluid navigation.
 - **Industrial Safety Standards** — Features a hardware E-Stop and a 1ms polling watchdog thread running at `SCHED_FIFO` priority, guaranteeing immediate shutdown capabilities.

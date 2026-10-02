@@ -16,7 +16,9 @@
 #   • _stats_loop      — 5Hz WebSocket broadcast
 # ================================================================
 
-import os, sys, time, math, json, csv, io, sqlite3, threading, atexit
+import os, sys, time, math, json, csv, io, sqlite3, threading, atexit, logging
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
 from datetime import datetime
 from collections import deque
 
@@ -32,7 +34,7 @@ try:
     Device.pin_factory = LGPIOFactory()
     _gz_ok = True
 except Exception as e:
-    print(f"⚠ gpiozero: {e}"); _gz_ok = False
+    logger.warning(f"⚠ gpiozero: {e}"); _gz_ok = False
 
 try:
     from ultralytics import YOLO
@@ -41,6 +43,15 @@ except:
     _yolo_avail = False
 
 app = Flask(__name__)
+
+# ── Logging Setup ──
+os.makedirs('logs', exist_ok=True)
+os.makedirs('reports/damage', exist_ok=True)
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s [%(levelname)s] %(message)s',
+                    handlers=[logging.FileHandler('logs/cleanbot.log'), logging.StreamHandler()])
+logger = logging.getLogger(__name__)
+
 app.config['SECRET_KEY'] = 'cb42'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
@@ -82,9 +93,9 @@ try:
     lgpio.gpio_write(h, LEFT_EN,  1)
     lgpio.gpio_write(h, RIGHT_EN, 1)
     gpio_ok = True
-    print("✅ BTS7960: LEFT(18,23,24) RIGHT(19,20,21)")
+    logger.info("✅ BTS7960: LEFT(18,23,24) RIGHT(19,20,21)")
 except Exception as e:
-    print(f"❌ lgpio: {e}")
+    logger.error(f"❌ lgpio: {e}")
 
 # ================================================================
 # FORCE STOP — DIRECT GPIO, NO LOCKS, ZERO DELAY
@@ -140,9 +151,9 @@ try:
     brush_relay  = OutputDevice(BRUSH_PIN, initial_value=False)
     water_valve  = OutputDevice(WATER_PIN, initial_value=False)
     estop_button = Button(ESTOP_PIN, pull_up=True, bounce_time=0.02)
-    print(f"✅ Relays brush=GPIO{BRUSH_PIN} water=GPIO{WATER_PIN} estop=GPIO{ESTOP_PIN}")
+    logger.info(f"✅ Relays brush=GPIO{BRUSH_PIN} water=GPIO{WATER_PIN} estop=GPIO{ESTOP_PIN}")
 except Exception as e:
-    print(f"❌ Relays: {e}")
+    logger.error(f"❌ Relays: {e}")
 
 # ================================================================
 # GLOBAL STATE
@@ -214,25 +225,25 @@ def brush_on():
     global brush_active
     if emergency_stop or not brush_relay: return
     brush_relay.on(); brush_active = True
-    print(f"🔄 BRUSH ON  GPIO{BRUSH_PIN}")
+    logger.info(f"🔄 BRUSH ON  GPIO{BRUSH_PIN}")
 
 def brush_off():
     global brush_active
     if brush_relay: brush_relay.off()
     brush_active = False
-    print(f"🔄 BRUSH OFF GPIO{BRUSH_PIN}")
+    logger.info(f"🔄 BRUSH OFF GPIO{BRUSH_PIN}")
 
 def water_on():
     global water_active
     if emergency_stop or not water_valve: return
     water_valve.on(); water_active = True
-    print(f"💧 WATER ON  GPIO{WATER_PIN}")
+    logger.info(f"💧 WATER ON  GPIO{WATER_PIN}")
 
 def water_off():
     global water_active
     if water_valve: water_valve.off()
     water_active = False
-    print(f"💧 WATER OFF GPIO{WATER_PIN}")
+    logger.info(f"💧 WATER OFF GPIO{WATER_PIN}")
 
 def _kill_all():
     """Full hardware kill — motors first (direct GPIO), then relays."""
@@ -282,9 +293,9 @@ try:
         ctypes.c_ulong(_estop_wdg.ident),
         _SCHED_FIFO, ctypes.byref(_param)
     )
-    print("✅ E-Stop watchdog: SCHED_FIFO priority 99")
+    logger.info("✅ E-Stop watchdog: SCHED_FIFO priority 99")
 except Exception as e:
-    print(f"⚠ Thread priority (non-root, ok): {e}")
+    logger.warning(f"⚠ Thread priority (non-root, ok): {e}")
 
 # ================================================================
 # HARDWARE ESTOP BUTTON CALLBACK
@@ -295,7 +306,7 @@ def _hw_estop_pressed():
     emergency_stop = True    # flag — watchdog picks this up within 1ms
     _estop_event.set()       # wake all _isleep()
     _kill_all()              # clean up relays
-    print("🚨 HARDWARE E-STOP ACTIVATED")
+    logger.info("🚨 HARDWARE E-STOP ACTIVATED")
 
 if estop_button:
     estop_button.when_pressed = _hw_estop_pressed
@@ -335,12 +346,12 @@ def init_camera():
                 ok, _ = cam.read()
                 if ok:
                     camera = cam; camera_ok = True
-                    print(f"✅ Camera idx={idx}")
+                    logger.info(f"✅ Camera idx={idx}")
                     return
             cam.release()
         except Exception as e:
-            print(f"⚠ cam{idx}: {e}")
-    print("❌ No camera found")
+            logger.warning(f"⚠ cam{idx}: {e}")
+    logger.info("❌ No camera found")
 
 def _capture_loop():
     """Thread 1: grab at full camera FPS, never decode. Always newest frame."""
@@ -358,7 +369,7 @@ def _capture_loop():
                     _raw_frame = frame    # atomic replace
                 _cap_event.set()
         except Exception as e:
-            print(f"capture err: {e}")
+            logger.info(f"capture err: {e}")
             time.sleep(0.1)  # brief pause before retry
 
 threading.Thread(target=_capture_loop, daemon=True, name='capture').start()
@@ -439,7 +450,7 @@ def _detect_edges(frame):
         return dists, confs
 
     except Exception as e:
-        print(f"edge_detect err: {e}")
+        logger.info(f"edge_detect err: {e}")
         return empty, zero
 
 # ================================================================
@@ -503,7 +514,12 @@ def _vision_loop():
                         cv2.rectangle(ann, (x1,y1), (x2,y2), col, 2)
                         cv2.putText(ann, f"{nm} {cf:.0%}", (x1, y1-5),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.38, (255,255,255), 1)
-                        if 'damage' in nm: damage_count += 1
+                        if 'damage' in nm: 
+                            damage_count += 1
+                            if damage_count % 30 == 1: # Save 1 snapshot approx every second of seeing damage
+                                ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                                cv2.imwrite(f'reports/damage/dmg_{ts}.jpg', frame)
+                                logger.warning(f'Damage snapshot saved: dmg_{ts}.jpg')
             except: pass
 
         # Mode label
@@ -600,7 +616,7 @@ def _movement_loop():
             elif mode == 'RIGHT':    robot_turn_right(current_speed)
             else:                    _force_stop()   # STOP
         except Exception as e:
-            print(f"motor cmd err: {e}")
+            logger.info(f"motor cmd err: {e}")
             _force_stop()  # safe fallback
 
         time.sleep(0.005)   # 200Hz = 5ms
@@ -633,7 +649,7 @@ def _save_session(dur, area, dirt, dmg):
                    int(dur), round(area,2), int(dirt), int(dmg)))
         c.commit(); c.close()
     except Exception as e:
-        print(f"DB save err: {e}")
+        logger.info(f"DB save err: {e}")
 
 def _get_history():
     try:
@@ -657,7 +673,7 @@ def _auto_clean_worker():
     auto_cleaning = True
     session_start = time.monotonic()
     area_covered  = 0.0
-    print("🤖 AUTO-CLEAN START — edge protection ACTIVE")
+    logger.info("🤖 AUTO-CLEAN START — edge protection ACTIVE")
     try:
         # Phase 1: Pre-wet
         water_on()
@@ -680,7 +696,7 @@ def _auto_clean_worker():
                 # EDGE CHECK — only in auto-clean
                 if (edge_distances['front'] < EDGE_CRITICAL and
                     edge_confidence['front'] >= MIN_CONF):
-                    print(f"  → Front edge at {edge_distances['front']}")
+                    logger.info(f"  → Front edge at {edge_distances['front']}")
                     break
                 robot_forward(SPEED_AUTO)
                 time.sleep(0.01)
@@ -710,7 +726,7 @@ def _auto_clean_worker():
                 # EDGE CHECK — only in auto-clean
                 if (edge_distances['back'] < EDGE_CRITICAL and
                     edge_confidence['back'] >= MIN_CONF):
-                    print(f"  → Back edge at {edge_distances['back']}")
+                    logger.info(f"  → Back edge at {edge_distances['back']}")
                     break
                 robot_backward(SPEED_AUTO)
                 time.sleep(0.01)
@@ -742,18 +758,18 @@ def _auto_clean_worker():
 
         dur = time.monotonic() - session_start
         _save_session(dur, area_covered, panel_dirt_level, damage_count)
-        print("✅ AUTO-CLEAN COMPLETE")
+        logger.info("✅ AUTO-CLEAN COMPLETE")
 
     except InterruptedError:
-        print("🚨 AUTO-CLEAN KILLED BY E-STOP")
+        logger.info("🚨 AUTO-CLEAN KILLED BY E-STOP")
     except Exception as e:
-        print(f"autoclean err: {e}")
+        logger.info(f"autoclean err: {e}")
     finally:
         _force_stop()
         brush_off(); water_off()
         auto_cleaning    = False
         last_clean_time  = time.strftime('%H:%M:%S')
-        print("🏁 AUTO-CLEAN ENDED")
+        logger.info("🏁 AUTO-CLEAN ENDED")
 
 # ================================================================
 # PATTERN PLAYER — NO edge protection, fully interruptible
@@ -762,7 +778,7 @@ def _auto_clean_worker():
 def _pattern_worker(path_data):
     global pattern_running
     pattern_running = True
-    print(f"▶ PATTERN: {len(path_data)} pts — NO edge protection (operator path)")
+    logger.info(f"▶ PATTERN: {len(path_data)} pts — NO edge protection (operator path)")
     try:
         for i in range(1, len(path_data)):
             if emergency_stop or not pattern_running: break
@@ -795,11 +811,11 @@ def _pattern_worker(path_data):
                 time.sleep(0.01)
 
     except Exception as e:
-        print(f"pattern err: {e}")
+        logger.info(f"pattern err: {e}")
     finally:
         _force_stop()
         pattern_running = False
-        print("✅ Pattern done")
+        logger.info("✅ Pattern done")
 
 # ================================================================
 # WEBSOCKET STATS BROADCASTER — 5Hz
@@ -975,11 +991,11 @@ def cmd_route():
         _estop_event.set()
         _kill_all()
         with movement_lock: movement_mode = 'STOP'
-        print("🚨 SOFTWARE E-STOP")
+        logger.info("🚨 SOFTWARE E-STOP")
     elif command == 'estop_reset':
         emergency_stop = False
         _estop_event.clear()
-        print("✅ E-STOP RESET")
+        logger.info("✅ E-STOP RESET")
     elif command == 'speed':
         current_speed = max(20, min(100, int(data.get('value', 75))))
     elif command == 'detection_on':
@@ -1045,6 +1061,27 @@ def status():
 def history():
     return jsonify(_get_history())
 
+
+@app.route('/history/pdf')
+def history_pdf():
+    rows = _get_history()
+    out = io.BytesIO()
+    c = canvas.Canvas(out, pagesize=letter)
+    c.setFont("Helvetica-Bold", 20)
+    c.drawString(50, 750, "CleanBot v1.0 - Session History Report")
+    c.setFont("Helvetica", 12)
+    y = 700
+    for r in rows:
+        c.drawString(50, y, f"Date: {r['date']} | Start: {r['start']} | Dur: {r['duration']} | Area: {r['area']}m2 | Dirt: {r['dirt']}% | Dmg: {r['damage']}")
+        y -= 20
+        if y < 50:
+            c.showPage()
+            c.setFont("Helvetica", 12)
+            y = 750
+    c.save()
+    out.seek(0)
+    return send_file(out, mimetype='application/pdf', as_attachment=True, download_name=f"cleanbot_report_{datetime.now().strftime('%Y%m%d')}.pdf")
+
 @app.route('/history/csv')
 def history_csv():
     rows = _get_history()
@@ -1082,13 +1119,13 @@ def patterns_route():
 # SHUTDOWN
 # ================================================================
 def _shutdown():
-    print("Shutting down CleanBot v1.0...")
+    logger.info("Shutting down CleanBot v1.0...")
     _kill_all()
     try:
         if gpio_ok and h: lgpio.gpiochip_close(h)
     except: pass
     if camera: camera.release()
-    print("✅ Shutdown complete")
+    logger.info("✅ Shutdown complete")
 atexit.register(_shutdown)
 
 # ================================================================
@@ -1096,13 +1133,13 @@ atexit.register(_shutdown)
 # ================================================================
 if __name__ == '__main__':
     print('\n' + '='*65)
-    print('  CleanBot v1.0 INDUSTRIAL — Zero Delay · Hardware E-Stop')
-    print(f'  Brush=GPIO{BRUSH_PIN}  Water=GPIO{WATER_PIN}  EStop=GPIO{ESTOP_PIN}')
-    print('  BTS7960#1: RPWM=GPIO18 LPWM=GPIO23 EN=GPIO24')
-    print('  BTS7960#2: RPWM=GPIO19 LPWM=GPIO20 EN=GPIO21')
-    print('  Edge protection: AUTO-CLEAN ONLY')
-    print('  Manual & Pattern: FULL SPEED, NO protection')
-    print('  E-Stop watchdog: 1ms poll, SCHED_FIFO priority')
+    logger.info('  CleanBot v1.0 INDUSTRIAL — Zero Delay · Hardware E-Stop')
+    logger.info(f'  Brush=GPIO{BRUSH_PIN}  Water=GPIO{WATER_PIN}  EStop=GPIO{ESTOP_PIN}')
+    logger.info('  BTS7960#1: RPWM=GPIO18 LPWM=GPIO23 EN=GPIO24')
+    logger.info('  BTS7960#2: RPWM=GPIO19 LPWM=GPIO20 EN=GPIO21')
+    logger.info('  Edge protection: AUTO-CLEAN ONLY')
+    logger.info('  Manual & Pattern: FULL SPEED, NO protection')
+    logger.info('  E-Stop watchdog: 1ms poll, SCHED_FIFO priority')
     print('='*65)
 
     init_camera()
@@ -1110,15 +1147,15 @@ if __name__ == '__main__':
     try:
         if os.path.exists(MODEL_PATH) and _yolo_avail:
             model = YOLO(MODEL_PATH)
-            print(f"✅ YOLO: {MODEL_PATH}")
+            logger.info(f"✅ YOLO: {MODEL_PATH}")
         elif _yolo_avail:
             model = YOLO('yolov8n.pt')
-            print("✅ YOLO: yolov8n.pt")
+            logger.info("✅ YOLO: yolov8n.pt")
         else:
             model = None
-            print("⚠ YOLO not available")
+            logger.info("⚠ YOLO not available")
     except Exception as e:
-        print(f"❌ YOLO: {e}"); model = None
+        logger.error(f"❌ YOLO: {e}"); model = None
 
     print(f"\n🌐  http://0.0.0.0:5000\n" + '='*65)
 

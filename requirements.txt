@@ -5,3 +5,4 @@ ultralytics>=8.0.0
 numpy>=1.24.0
 lgpio>=0.2.2.0
 gpiozero>=2.0
+reportlab>=4.0.0
