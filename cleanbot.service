@@ -1,0 +1,17 @@
+[Unit]
+Description=CleanBot v1.0 Industrial Solar Panel Cleaning Robot
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=solarbot
+WorkingDirectory=/home/solarbot/cleanbot
+ExecStart=/usr/bin/python3 /home/solarbot/cleanbot/app.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

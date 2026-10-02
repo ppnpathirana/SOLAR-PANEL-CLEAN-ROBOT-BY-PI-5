@@ -1,0 +1,30 @@
+# Model file (too large for GitHub — train your own)
+best.pt
+*.pt
+*.onnx
+
+# Database (auto-created on first run)
+cleanbot.db
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
