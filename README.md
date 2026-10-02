@@ -15,6 +15,22 @@
 
 **CleanBot** is designed to maintain peak efficiency for solar energy arrays through automated cleaning. By combining a custom-trained YOLOv8 computer vision model with robust edge-detection algorithms, the robot navigates safely and autonomously across solar panels. Its backend leverages a high-frequency, multi-threaded architecture to ensure instantaneous response to environmental hazards and emergency stop commands.
 
+## 👥 Meet the Team
+
+### 👨‍💻 Project Lead & Developer
+**Pasindu**
+* **Academic Profile:** Third Year Engineering Technology Student
+* **Institution:** Sabaragamuwa University of Sri Lanka
+* **Professional Affiliation:** IAENG Member (No. 566684)
+
+### 👥 Contributors
+**Sasidu Nisad**
+* **Role:** Development & Technical Contributor
+* **Bio:** A key contributor to this project, responsible for significant aspects of the development and implementation process. His contributions played an important role in bringing the project from development to completion.
+* **LinkedIn:** [Sasidu Nisad](https://www.linkedin.com/in/sasindu-nisad-724388332/)
+
+---
+
 ## 📸 Core Capabilities
 
 - **Real-Time AI Vision** — Utilizes YOLOv8 for dirt and damage detection, overlaid with a multi-layered edge detection system (Canny, HSV, Sobel, and Contour).
@@ -101,18 +117,6 @@ CleanBot's architecture strictly isolates safety-critical operations from standa
 1. **Hardware E-Stop:** Bypasses software states to trigger `_force_stop()` immediately.
 2. **Watchdog Thread:** Dedicated thread polling every 1ms. Uses direct GPIO kills, avoiding Python's Global Interpreter Lock (GIL) overhead.
 3. **Edge Protection:** Active during Auto-Clean mode. Analyzes four spatial zones simultaneously. (Note: Disabled during manual operation to allow operator flexibility).
-
----
-
-## 👨‍💻 Developer Information
-
-This project was engineered and developed by **Pasindu**.
-
-* **Academic Profile:** Third Year Engineering Technology Student
-* **Institution:** Sabaragamuwa University of Sri Lanka
-* **Professional Affiliation:** IAENG Member (No. 566684)
-
-For technical inquiries, academic reviews, or professional networking, please reach out via standard GitHub channels.
 
 ---
 
